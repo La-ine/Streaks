@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,12 +7,22 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+// Release signing is read from keystore.properties (git-ignored, see keystore.properties.example)
+// so no passwords live in the build files. Without it, release builds come out unsigned.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null
+
 android {
-    namespace = "com.example.habitgrid"
+    namespace = "com.diongue.streaks"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.habitgrid"
+        // -PlegacyAppId builds under the original "com.example.habitgrid" ID, so it can be installed
+        // over the old app to export its data (see README, "Moving data from the old app").
+        applicationId = if (project.hasProperty("legacyAppId")) "com.example.habitgrid" else "com.diongue.streaks"
         minSdk = 26
         targetSdk = 36
         versionCode = 2
@@ -19,8 +31,20 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseKey) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
